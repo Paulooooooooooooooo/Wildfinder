@@ -1,0 +1,713 @@
+#objective : generate format long data for glmm analysis
+
+rm(list=ls())
+library(readxl)
+library(tidyr)
+library(ggplot2)
+library(readr)
+CarabidData_Emerge <- read_excel("C:/Users/pbannwart/Desktop/DataEMERGE/Carabidae/CarabidData_Emerge.xlsx", 
+                                 sheet = "Donnees")
+#View(CarabidData_Emerge)
+
+CarabidData_Emerge['Culture'] <- NA
+CarabidData_Emerge$Culture=as.character(CarabidData_Emerge$Culture)
+
+for (i in 1:nrow(CarabidData_Emerge)) {
+  if (CarabidData_Emerge[i,3]=="C01") {CarabidData_Emerge[i,12]="Ble"}
+  if (CarabidData_Emerge[i,3]=="C02") {CarabidData_Emerge[i,12]="Luzerne"}
+  if (CarabidData_Emerge[i,3]=="C03") {CarabidData_Emerge[i,12]="Luzerne"}
+  if (CarabidData_Emerge[i,3]=="C04") {CarabidData_Emerge[i,12]="Luzerne"}
+  if (CarabidData_Emerge[i,3]=="C05") {CarabidData_Emerge[i,12]="Ble"}
+  if (CarabidData_Emerge[i,3]=="C06") {CarabidData_Emerge[i,12]="Seigle-Lotier"}
+  if (CarabidData_Emerge[i,3]=="C07") {CarabidData_Emerge[i,12]="Ble"}
+  if (CarabidData_Emerge[i,3]=="C08") {CarabidData_Emerge[i,12]="Seigle-Lotier"}
+  if (CarabidData_Emerge[i,3]=="C09") {CarabidData_Emerge[i,12]="Moutarde"}
+  if (CarabidData_Emerge[i,3]=="C10") {CarabidData_Emerge[i,12]="Ble-Feverole"}
+  if (CarabidData_Emerge[i,3]=="C11") {CarabidData_Emerge[i,12]="Ble"}
+  if (CarabidData_Emerge[i,3]=="C12") {CarabidData_Emerge[i,12]="Ble-Feverole"}
+  if (CarabidData_Emerge[i,3]=="C13") {CarabidData_Emerge[i,12]="Feverole"}
+  if (CarabidData_Emerge[i,3]=="C14") {CarabidData_Emerge[i,12]="Ble"}
+  if (CarabidData_Emerge[i,3]=="C15") {CarabidData_Emerge[i,12]="Ble-pois"}
+  if (CarabidData_Emerge[i,3]=="C16") {CarabidData_Emerge[i,12]="Ble"}
+  if (CarabidData_Emerge[i,3]=="C17") {CarabidData_Emerge[i,12]="Orge"}}
+
+DataCarabidae=CarabidData_Emerge
+DataCarabidae$Count=as.numeric(DataCarabidae$Count)
+
+#ONLY OVERWINTERING ####
+HivernantsCarabidae=subset(DataCarabidae,DataCarabidae$Trap_type=="PI" | DataCarabidae$Trap_type=="FI")
+
+# CORRECTION DES DONNEES : Agrégation et correction pots manquants ####
+colnames(HivernantsCarabidae)
+names(HivernantsCarabidae)[names(HivernantsCarabidae) == 'Point'] <- 'Position'
+names(HivernantsCarabidae)[names(HivernantsCarabidae) == 'Trap_type'] <- 'Trap'
+HivernantsCarabidae=HivernantsCarabidae[,-c(6)]
+
+#1ère étape : pour chaque tente : faire la somme entre les fioles et les pots barber
+NombreOccurrenceTrap=data.frame(table(HivernantsCarabidae$Trap_nr))
+table(NombreOccurrenceTrap$Freq)
+#Or cet indicateur discrimine les FI et PI -> nous allons le recoder en ne prenant simplement pas en compte cette information
+
+HivernantsCarabidae$IdentifiantTrap <- do.call(paste, c(HivernantsCarabidae[c("Session","SDC","Field","Habitat","Position","Culture")],sep=":"))
+
+AggregateHivernantsCarabidae=aggregate(. ~ IdentifiantTrap, HivernantsCarabidae[,c(9,12)], sum)#n = 608 -> logique?
+#donc pas de tentes manquantes qui nécessite d'injecter des 0 
+
+SeparateAggregateHivernantsCarabidae=separate(AggregateHivernantsCarabidae,'IdentifiantTrap',c("Session","SDC","Field","Habitat","Position","Culture"),sep=':')
+#608 points -> semble ok 
+table(SeparateAggregateHivernantsCarabidae$Session)
+#S9 -> manque 4 pots car la parcelle 17 (orge) a été récoltée entre la S8 et la S9 -> curieux de voir qu'à chaque fois à minima un pot ou une fiole était remplie
+
+
+## - DEBUT Extraction type table complète pour araignée - ##
+ExportForSpider=SeparateAggregateHivernantsCarabidae
+
+ExportForSpider$NecessaryInformation <- do.call(paste, c(ExportForSpider[c("Field","Culture","SDC","Habitat","Session","Position")],sep=":"))
+
+#write.csv2(ExportForSpider,file="TableCompleteSpiderExample.csv")
+
+## - FIN Extraction type table complète pour araignée - ##
+
+FinalCarabidaeGLMMSession=SeparateAggregateHivernantsCarabidae
+
+#Information Field : 1:17 déjà présente
+#Information Habitat nested dans field à ajouter 
+FinalCarabidaeGLMMSession$SDCHabitat <- do.call(paste, c(FinalCarabidaeGLMMSession[c("SDC","Habitat")],sep=":"))
+table(FinalCarabidaeGLMMSession$SDCHabitat)
+
+FinalCarabidaeGLMMSession$SDCHabitat <- gsub("SD:WFS", "WFS", FinalCarabidaeGLMMSession$SDCHabitat)
+FinalCarabidaeGLMMSession$SDCHabitat <- gsub("TS:WFS", "WFS", FinalCarabidaeGLMMSession$SDCHabitat)
+table(FinalCarabidaeGLMMSession$SDCHabitat)
+
+FinalCarabidaeGLMMSession$HabitatField <- do.call(paste, c(FinalCarabidaeGLMMSession[c("SDCHabitat","Field")],sep=":"))
+table(FinalCarabidaeGLMMSession$HabitatField)#n=34 ok
+
+#Ajout information type de culture
+FinalCarabidaeGLMMSession$CultureHabitat <- do.call(paste, c(FinalCarabidaeGLMMSession[c("Culture","Habitat")],sep=":"))
+table(FinalCarabidaeGLMMSession$CultureHabitat)
+
+FinalCarabidaeGLMMSession$CultureHabitat <- gsub("Ble-Feverole:WFS", "WFS", FinalCarabidaeGLMMSession$CultureHabitat)
+FinalCarabidaeGLMMSession$CultureHabitat <- gsub("Ble-pois:WFS", "WFS", FinalCarabidaeGLMMSession$CultureHabitat)
+FinalCarabidaeGLMMSession$CultureHabitat <- gsub("Ble:WFS", "WFS", FinalCarabidaeGLMMSession$CultureHabitat)
+FinalCarabidaeGLMMSession$CultureHabitat <- gsub("Feverole:WFS", "WFS", FinalCarabidaeGLMMSession$CultureHabitat)
+FinalCarabidaeGLMMSession$CultureHabitat <- gsub("Luzerne:WFS", "WFS", FinalCarabidaeGLMMSession$CultureHabitat)
+FinalCarabidaeGLMMSession$CultureHabitat <- gsub("Moutarde:WFS", "WFS", FinalCarabidaeGLMMSession$CultureHabitat)
+FinalCarabidaeGLMMSession$CultureHabitat <- gsub("Orge:WFS", "WFS", FinalCarabidaeGLMMSession$CultureHabitat)
+FinalCarabidaeGLMMSession$CultureHabitat <- gsub("Seigle-Lotier:WFS", "WFS", FinalCarabidaeGLMMSession$CultureHabitat)
+table(FinalCarabidaeGLMMSession$CultureHabitat)
+
+FinalCarabidaeGLMMSession$CultureHabitatSDC <- do.call(paste, c(FinalCarabidaeGLMMSession[c("CultureHabitat","SDC")],sep=":"))
+
+#write.csv2(FinalCarabidaeGLMMSession,file="OverwinteringCarabidaeSessionLongFormat.csv")
+
+
+OverwinteringCarabidaeTrapSession=SeparateAggregateHivernantsCarabidae
+
+hist(OverwinteringCarabidaeTrapSession$Count, breaks = 50, col = "blue", main = "",
+     xlab = "Nombre carabes hivernants", ylab = "Count")
+
+#### Ajout information période ####
+
+Periode=NULL
+for (i in 1:nrow(OverwinteringCarabidaeTrapSession)) {
+  if (OverwinteringCarabidaeTrapSession[i,1]=="S1") {Periode[i]="P1"}
+  if (OverwinteringCarabidaeTrapSession[i,1]=="S2") {Periode[i]="P1"}
+  if (OverwinteringCarabidaeTrapSession[i,1]=="S3") {Periode[i]="P1"}
+  if (OverwinteringCarabidaeTrapSession[i,1]=="S4") {Periode[i]="P2"}
+  if (OverwinteringCarabidaeTrapSession[i,1]=="S5") {Periode[i]="P2"}
+  if (OverwinteringCarabidaeTrapSession[i,1]=="S6") {Periode[i]="P2"}
+  if (OverwinteringCarabidaeTrapSession[i,1]=="S7") {Periode[i]="P3"}
+  if (OverwinteringCarabidaeTrapSession[i,1]=="S8") {Periode[i]="P3"}
+  if (OverwinteringCarabidaeTrapSession[i,1]=="S9") {Periode[i]="P3"}}
+
+OverwinteringCarabidaeTrapSession=cbind(OverwinteringCarabidaeTrapSession,Periode)
+table(OverwinteringCarabidaeTrapSession$Culture)
+
+#### Ajout information IDHabitat ####
+OverwinteringCarabidaeTrapSession$FieldHabitat <- do.call(paste, c(OverwinteringCarabidaeTrapSession[c("Field","Habitat")],sep=":"))
+
+TableIDHabitat=data.frame(table(OverwinteringCarabidaeTrapSession$FieldHabitat))
+NewColumn=data.frame(c(1:34))
+NewColumn$c.1.34.=as.character(NewColumn$c.1.34.)
+colnames(NewColumn)=c("IDHabitat")
+TableIDHabitat=cbind(TableIDHabitat,NewColumn)
+colnames(TableIDHabitat)=c("FieldHabitat","Freq","IDHabitat")
+TableIDHabitat=TableIDHabitat[,-c(2)]
+
+MergeIDHabitat=data.frame(merge(OverwinteringCarabidaeTrapSession, TableIDHabitat, by.x = "FieldHabitat"))
+colnames(MergeIDHabitat)
+
+#### VALEUR CUMULEE PAR PIEGE ET PAR PERIODE ####
+CumulativeDensityPeriod=MergeIDHabitat
+CumulativeDensityPeriod=CumulativeDensityPeriod[,-c(1)]
+colnames(CumulativeDensityPeriod)
+
+CumulativeDensityPeriod$AllInformations <- do.call(paste, c(CumulativeDensityPeriod[c("SDC","Field","Habitat","Position","Culture","Periode","IDHabitat")],sep=":"))
+
+AggregateCumulativeDensityPeriod=aggregate(. ~ AllInformations, CumulativeDensityPeriod[,c(7,10)], sum)#n = 608 -> logique?
+
+SeparateAggregateCumulativeDensityPeriod=separate(AggregateCumulativeDensityPeriod,'AllInformations',c("SDC","Field","Habitat","Position","Culture","Periode","IDHabitat"),sep=':')
+
+SeparateAggregateCumulativeDensityPeriod$TrapInformation <- do.call(paste, c(SeparateAggregateCumulativeDensityPeriod[c("Field","IDHabitat","Position")],sep=":"))
+
+FinalGLMMOWCarabidae=SeparateAggregateCumulativeDensityPeriod
+#setwd("C:/Users/pbannwart/Desktop/DataEMERGE/GLMMANALYSIS")
+#write.csv2(FinalGLMMOWCarabidae,file="OverwinteringCarabidaeLongFormat.csv")
+
+# END FOR TOTAL CARABIDAE DENSITY ####
+
+# GLMM FOR NUMERICALLY DOMINANT CARABIDAE SPECIES ####
+rm(list=ls())
+library(readxl)
+library(tidyr)
+library(ggplot2)
+library(readr)
+CarabidData_Emerge <- read_excel("C:/Users/pbannwart/Desktop/DataEMERGE/Carabidae/CarabidData_Emerge.xlsx", 
+                                 sheet = "Donnees")
+#View(CarabidData_Emerge)
+
+CarabidData_Emerge['Culture'] <- NA
+CarabidData_Emerge$Culture=as.character(CarabidData_Emerge$Culture)
+
+for (i in 1:nrow(CarabidData_Emerge)) {
+  if (CarabidData_Emerge[i,3]=="C01") {CarabidData_Emerge[i,12]="Ble"}
+  if (CarabidData_Emerge[i,3]=="C02") {CarabidData_Emerge[i,12]="Luzerne"}
+  if (CarabidData_Emerge[i,3]=="C03") {CarabidData_Emerge[i,12]="Luzerne"}
+  if (CarabidData_Emerge[i,3]=="C04") {CarabidData_Emerge[i,12]="Luzerne"}
+  if (CarabidData_Emerge[i,3]=="C05") {CarabidData_Emerge[i,12]="Ble"}
+  if (CarabidData_Emerge[i,3]=="C06") {CarabidData_Emerge[i,12]="Seigle-Lotier"}
+  if (CarabidData_Emerge[i,3]=="C07") {CarabidData_Emerge[i,12]="Ble"}
+  if (CarabidData_Emerge[i,3]=="C08") {CarabidData_Emerge[i,12]="Seigle-Lotier"}
+  if (CarabidData_Emerge[i,3]=="C09") {CarabidData_Emerge[i,12]="Moutarde"}
+  if (CarabidData_Emerge[i,3]=="C10") {CarabidData_Emerge[i,12]="Ble-Feverole"}
+  if (CarabidData_Emerge[i,3]=="C11") {CarabidData_Emerge[i,12]="Ble"}
+  if (CarabidData_Emerge[i,3]=="C12") {CarabidData_Emerge[i,12]="Ble-Feverole"}
+  if (CarabidData_Emerge[i,3]=="C13") {CarabidData_Emerge[i,12]="Feverole"}
+  if (CarabidData_Emerge[i,3]=="C14") {CarabidData_Emerge[i,12]="Ble"}
+  if (CarabidData_Emerge[i,3]=="C15") {CarabidData_Emerge[i,12]="Ble-pois"}
+  if (CarabidData_Emerge[i,3]=="C16") {CarabidData_Emerge[i,12]="Ble"}
+  if (CarabidData_Emerge[i,3]=="C17") {CarabidData_Emerge[i,12]="Orge"}}
+
+DataCarabidae=CarabidData_Emerge
+DataCarabidae$Count=as.numeric(DataCarabidae$Count)
+
+# VERIFICATION ONLY CIRCULATING ####
+#### ESPECES LES + HIVERNANTES SONT AUSSI LES + DOMINANTES? ####
+CirculantsCarabidae=subset(DataCarabidae,DataCarabidae$Trap_type=="PE") 
+table(CirculantsCarabidae$Trap_type)
+
+DominantSpeciesCirculants=aggregate(. ~ Species, CirculantsCarabidae[,c(9,10)], sum)
+Percentage=NULL
+sum(DominantSpeciesCirculants$Count) #10585
+for (i in 1:nrow(DominantSpeciesCirculants)) {
+  Percentage[i]=(DominantSpeciesCirculants[i,2]/10585)
+}
+Percentage=Percentage*100
+
+DominantSpeciesCirculants=cbind(DominantSpeciesCirculants,data.frame(Percentage))
+Percentage=NULL
+
+
+#### FIN ESPECES LES + HIVERNANTES SONT AUSSI LES + DOMINANTES? ####
+
+#ONLY OVERWINTERING ####
+HivernantsCarabidae=subset(DataCarabidae,DataCarabidae$Trap_type=="PI" | DataCarabidae$Trap_type=="FI") 
+
+#### EXAMPLE TABLE FOR AFTER ####
+ExampleTable=HivernantsCarabidae
+
+#Periode=NULL
+#for (i in 1:nrow(ExampleTable)) {
+#if (ExampleTable[i,1]=="S1") {Periode[i]="P1"}
+# if (ExampleTable[i,1]=="S2") {Periode[i]="P1"}
+# if (ExampleTable[i,1]=="S3") {Periode[i]="P1"}
+# if (ExampleTable[i,1]=="S4") {Periode[i]="P2"}
+# if (ExampleTable[i,1]=="S5") {Periode[i]="P2"}
+# if (ExampleTable[i,1]=="S6") {Periode[i]="P2"}
+# if (ExampleTable[i,1]=="S7") {Periode[i]="P3"}
+# if (ExampleTable[i,1]=="S8") {Periode[i]="P3"}
+# if (ExampleTable[i,1]=="S9") {Periode[i]="P3"}}
+
+#ExampleTable=cbind(ExampleTable,Periode)
+names(ExampleTable)[names(ExampleTable) == 'Point'] <- 'Position'
+
+ExampleTable$MinimalNumber <- do.call(paste, c(ExampleTable[c("SDC","Field","Habitat","Position","Culture","Session")],sep=":"))
+UniqueExampleTable=data.frame(unique(ExampleTable$MinimalNumber))
+colnames(UniqueExampleTable)=c("MinimalNumber")
+SepUniqueExampleTable=separate(UniqueExampleTable,'MinimalNumber',c("SDC","Field","Habitat","Position","Culture","Session"),sep=':')
+nrow(SepUniqueExampleTable)
+
+#write.csv2(SepUniqueExampleTable,file="ExampleTable.csv")
+
+
+
+
+
+# Quantification des espèces dominantes sur l'ensemble des pièges ####
+DominantSpecies=aggregate(. ~ Species, HivernantsCarabidae[,c(9,10)], sum)
+Percentage=NULL
+sum(DominantSpecies$Count) #5842
+for (i in 1:nrow(DominantSpecies)) {
+  Percentage[i]=(DominantSpecies[i,2]/5842)
+}
+Percentage=Percentage*100
+DominantSpecies=cbind(DominantSpecies,data.frame(Percentage))
+DominantSpecies[61,3]+DominantSpecies[20,3]+DominantSpecies[49,3]+DominantSpecies[13,3]+DominantSpecies[10,3]+DominantSpecies[21,3]+DominantSpecies[53,3]
+#species representing at least 80% of total overwintering density
+DominantSpecies[61,1] #Trechus_gr._Quadristriatus
+DominantSpecies[20,1] #Gynandromorphus_etruscus
+DominantSpecies[49,1] #Poecilus_cupreus
+DominantSpecies[13,1] #Brachinus_crepitans
+DominantSpecies[10,1] #Anchomenus_dorsalis
+DominantSpecies[21,1] #Harpalus_affinis
+DominantSpecies[53,1] #Pseudoophonus_rufipes
+
+Only80AbundantSpecies=subset(HivernantsCarabidae,HivernantsCarabidae$Species=="Trechus_gr._Quadristriatus" | HivernantsCarabidae$Species=="Gynandromorphus_etruscus" | HivernantsCarabidae$Species=="Poecilus_cupreus" | HivernantsCarabidae$Species=="Brachinus_crepitans" | HivernantsCarabidae$Species=="Anchomenus_dorsalis" | HivernantsCarabidae$Species=="Harpalus_affinis" | HivernantsCarabidae$Species=="Pseudoophonus_rufipes")
+
+table(Only80AbundantSpecies$Species)
+
+# CORRECTION DES DONNEES : Agrégation et correction pots manquants ####
+colnames(Only80AbundantSpecies)
+names(Only80AbundantSpecies)[names(Only80AbundantSpecies) == 'Point'] <- 'Position'
+names(Only80AbundantSpecies)[names(Only80AbundantSpecies) == 'Trap_type'] <- 'Trap'
+Only80AbundantSpecies=Only80AbundantSpecies[,-c(6)]
+
+#1ère étape : pour chaque tente : faire la somme entre les fioles et les pots barber
+
+
+Only80AbundantSpecies$IdentifiantTrap <- do.call(paste, c(Only80AbundantSpecies[c("Session","SDC","Field","Habitat","Position","Culture","Species")],sep=":"))
+
+AggregateOnly80AbundantSpecies=aggregate(. ~ IdentifiantTrap, Only80AbundantSpecies[,c(9,12)], sum)#n = 953 observations 
+
+SeparateAggregateOnly80AbundantSpecies=separate(AggregateOnly80AbundantSpecies,'IdentifiantTrap',c("Session","SDC","Field","Habitat","Position","Culture","Species"),sep=':')
+
+#Faire la somme de chaque pot par bloc de session
+#Periode=NULL
+#for (i in 1:nrow(SeparateAggregateOnly80AbundantSpecies)) {
+# if (SeparateAggregateOnly80AbundantSpecies[i,1]=="S1") {Periode[i]="P1"}
+# if (SeparateAggregateOnly80AbundantSpecies[i,1]=="S2") {Periode[i]="P1"}
+# if (SeparateAggregateOnly80AbundantSpecies[i,1]=="S3") {Periode[i]="P1"}
+# if (SeparateAggregateOnly80AbundantSpecies[i,1]=="S4") {Periode[i]="P2"}
+# if (SeparateAggregateOnly80AbundantSpecies[i,1]=="S5") {Periode[i]="P2"}
+# if (SeparateAggregateOnly80AbundantSpecies[i,1]=="S6") {Periode[i]="P2"}
+# if (SeparateAggregateOnly80AbundantSpecies[i,1]=="S7") {Periode[i]="P3"}
+# if (SeparateAggregateOnly80AbundantSpecies[i,1]=="S8") {Periode[i]="P3"}
+# if (SeparateAggregateOnly80AbundantSpecies[i,1]=="S9") {Periode[i]="P3"}}
+
+#SeparateAggregateOnly80AbundantSpecies=cbind(SeparateAggregateOnly80AbundantSpecies,Periode)
+
+#### VALEUR CUMULEE PAR PIEGE ET PAR PERIODE ####
+CumulativeDensitySession=SeparateAggregateOnly80AbundantSpecies
+#CumulativeDensityPeriod=CumulativeDensityPeriod[,-c(1)]
+colnames(CumulativeDensitySession)
+
+CumulativeDensitySession$AllInformations <- do.call(paste, c(CumulativeDensitySession[c("SDC","Field","Habitat","Position","Culture","Session","Species")],sep=":"))
+
+AggregateCumulativeDensitySession=aggregate(. ~ AllInformations, CumulativeDensitySession[,c(8,9)], sum)#n = 584
+
+SeparateAggregateCumulativeDensityPeriod=separate(CumulativeDensitySession,'AllInformations',c("SDC","Field","Habitat","Position","Culture","Session","Species"),sep=':')
+
+(17*2)*3*2 #censé avoir 204 valeurs par tableaux 
+
+#### TRECHUS GR. QUADRISTRIATUS ####
+TREQRA=subset(SeparateAggregateCumulativeDensityPeriod,SeparateAggregateCumulativeDensityPeriod$Species=="Trechus_gr._Quadristriatus") #124
+table(TREQRA$Session)
+
+TREQRA$MinimalNumber <- do.call(paste, c(TREQRA[c("SDC","Field","Habitat","Position","Culture","Session","Species")],sep=":"))
+UniqueTREQRA=data.frame(unique(TREQRA$MinimalNumber))
+colnames(UniqueTREQRA)=c("MinimalNumber")
+SepUniqueTREQRA=separate(UniqueTREQRA,'MinimalNumber',c("SDC","Field","Habitat","Position","Culture","Session","Species"),sep=':')
+nrow(SepUniqueTREQRA)
+204-124 #80 valeurs manquantes
+
+#Chargement de la table théorique que nous devrions avoir
+library(readr)
+ExampleTable <- read_delim("ExampleTable.csv", 
+                           delim = ";", escape_double = FALSE, trim_ws = TRUE)
+ExampleTable=ExampleTable[,-c(1)]
+colnames(ExampleTable)
+
+SepUniqueTREQRA$IdentifiantAntiJoin <- do.call(paste, c(SepUniqueTREQRA[c("SDC","Field", "Habitat","Position","Culture","Session")],sep=":"))
+
+ExampleTable$IdentifiantAntiJoin <- do.call(paste, c(ExampleTable[c("SDC","Field", "Habitat","Position","Culture","Session")],sep=":"))
+
+library(dplyr)
+AntiJoinTREQRA=data.frame(anti_join(ExampleTable, SepUniqueTREQRA, by='IdentifiantAntiJoin'))#n=80 parfait
+
+TREQRA=TREQRA[,-c(9)]
+AntiJoinTREQRA=AntiJoinTREQRA[,-c(7)]
+AntiJoinTREQRA$Species=as.character("Trechus_gr._Quadristriatus")
+AntiJoinTREQRA$Count=as.numeric(0)
+
+FinalTREQRA=rbind(TREQRA,AntiJoinTREQRA)
+#ok pour TREQRA
+
+## -- -- Ajout information IDHabitat -- -- ##
+ExampleTable$FieldHabitat <- do.call(paste, c(ExampleTable[c("Field","Habitat")],sep=":"))
+
+TableIDHabitat=data.frame(table(ExampleTable$FieldHabitat))
+NewColumn=data.frame(c(1:34))
+NewColumn$c.1.34.=as.character(NewColumn$c.1.34.)
+colnames(NewColumn)=c("IDHabitat")
+TableIDHabitat=cbind(TableIDHabitat,NewColumn)
+colnames(TableIDHabitat)=c("FieldHabitat","Freq","IDHabitat")
+TableIDHabitat=TableIDHabitat[,-c(2)]
+
+FinalTREQRA$FieldHabitat <- do.call(paste, c(FinalTREQRA[c("Field","Habitat")],sep=":"))
+
+FinalTREQRA=data.frame(merge(FinalTREQRA, TableIDHabitat, by.x = "FieldHabitat"))
+colnames(FinalTREQRA)
+
+FinalTREQRA=FinalTREQRA[,-c(1)]
+
+FinalTREQRA$TrapInformation <- do.call(paste, c(FinalTREQRA[c("Field","IDHabitat","Position")],sep=":"))
+
+setwd("C:/Users/pbannwart/Desktop/DataEMERGE/GLMMANALYSIS")
+#write.csv2(FinalTREQRA,file="OverwinteringTREQRALongFormat.csv")
+
+
+#### GYNANDROMORPHUS ETRUSCUS ####
+GYNETR=subset(SeparateAggregateCumulativeDensityPeriod,SeparateAggregateCumulativeDensityPeriod$Species=="Gynandromorphus_etruscus") #36
+
+GYNETR$MinimalNumber <- do.call(paste, c(GYNETR[c("SDC","Field","Habitat","Position","Culture","Session","Species")],sep=":"))
+UniqueGYNETR=data.frame(unique(GYNETR$MinimalNumber))
+colnames(UniqueGYNETR)=c("MinimalNumber")
+SepUniqueGYNETR=separate(UniqueGYNETR,'MinimalNumber',c("SDC","Field","Habitat","Position","Culture","Session","Species"),sep=':')
+count(SepUniqueGYNETR)
+204-36 #80 valeurs manquantes
+
+#Chargement de la table théorique que nous devrions avoir
+library(readr)
+ExampleTable <- read_delim("ExampleTable.csv", 
+                           delim = ";", escape_double = FALSE, trim_ws = TRUE)
+ExampleTable=ExampleTable[,-c(1)]
+colnames(ExampleTable)
+
+SepUniqueGYNETR$IdentifiantAntiJoin <- do.call(paste, c(SepUniqueGYNETR[c("SDC","Field", "Habitat","Position","Culture","Session")],sep=":"))
+
+ExampleTable$IdentifiantAntiJoin <- do.call(paste, c(ExampleTable[c("SDC","Field", "Habitat","Position","Culture","Session")],sep=":"))
+
+library(dplyr)
+AntiJoinGYNETR=data.frame(anti_join(ExampleTable, SepUniqueGYNETR, by='IdentifiantAntiJoin'))#n=80 parfait
+
+GYNETR=GYNETR[,-c(9)]
+AntiJoinGYNETR=AntiJoinGYNETR[,-c(7)]
+AntiJoinGYNETR$Species=as.character("Gynandromorphus_etruscus")
+AntiJoinGYNETR$Count=as.numeric(0)
+
+FinalGYNETR=rbind(GYNETR,AntiJoinGYNETR)
+#n=204
+
+## -- -- Ajout information IDHabitat -- -- ##
+ExampleTable$FieldHabitat <- do.call(paste, c(ExampleTable[c("Field","Habitat")],sep=":"))
+
+TableIDHabitat=data.frame(table(ExampleTable$FieldHabitat))
+NewColumn=data.frame(c(1:34))
+NewColumn$c.1.34.=as.character(NewColumn$c.1.34.)
+colnames(NewColumn)=c("IDHabitat")
+TableIDHabitat=cbind(TableIDHabitat,NewColumn)
+colnames(TableIDHabitat)=c("FieldHabitat","Freq","IDHabitat")
+TableIDHabitat=TableIDHabitat[,-c(2)]
+
+FinalGYNETR$FieldHabitat <- do.call(paste, c(FinalGYNETR[c("Field","Habitat")],sep=":"))
+
+FinalGYNETR=data.frame(merge(FinalGYNETR, TableIDHabitat, by.x = "FieldHabitat"))
+colnames(FinalGYNETR)
+
+FinalGYNETR=FinalGYNETR[,-c(1)]
+
+FinalGYNETR$TrapInformation <- do.call(paste, c(FinalGYNETR[c("Field","IDHabitat","Position")],sep=":"))
+
+setwd("C:/Users/pbannwart/Desktop/DataEMERGE/GLMMANALYSIS")
+#write.csv2(FinalGYNETR,file="OverwinteringGYNETRLongFormat.csv")
+
+#### POECILUS CUPREUS ####
+POECUP=subset(SeparateAggregateCumulativeDensityPeriod,SeparateAggregateCumulativeDensityPeriod$Species=="Poecilus_cupreus") #102
+
+POECUP=subset(SeparateAggregateCumulativeDensityPeriod,SeparateAggregateCumulativeDensityPeriod$Species=="Poecilus_cupreus") #36
+
+POECUP$MinimalNumber <- do.call(paste, c(POECUP[c("SDC","Field","Habitat","Position","Culture","Session","Species")],sep=":"))
+UniquePOECUP=data.frame(unique(POECUP$MinimalNumber))
+colnames(UniquePOECUP)=c("MinimalNumber")
+SepUniquePOECUP=separate(UniquePOECUP,'MinimalNumber',c("SDC","Field","Habitat","Position","Culture","Session","Species"),sep=':')
+count(SepUniquePOECUP)
+204-102 #80 valeurs manquantes
+
+#Chargement de la table théorique que nous devrions avoir
+library(readr)
+ExampleTable <- read_delim("ExampleTable.csv", 
+                           delim = ";", escape_double = FALSE, trim_ws = TRUE)
+ExampleTable=ExampleTable[,-c(1)]
+colnames(ExampleTable)
+
+SepUniquePOECUP$IdentifiantAntiJoin <- do.call(paste, c(SepUniquePOECUP[c("SDC","Field", "Habitat","Position","Culture","Session")],sep=":"))
+
+ExampleTable$IdentifiantAntiJoin <- do.call(paste, c(ExampleTable[c("SDC","Field", "Habitat","Position","Culture","Session")],sep=":"))
+
+library(dplyr)
+AntiJoinPOECUP=data.frame(anti_join(ExampleTable, SepUniquePOECUP, by='IdentifiantAntiJoin'))#n=80 parfait
+
+POECUP=POECUP[,-c(9)]
+AntiJoinPOECUP=AntiJoinPOECUP[,-c(7)]
+AntiJoinPOECUP$Species=as.character("Poecilus_cupreus")
+AntiJoinPOECUP$Count=as.numeric(0)
+
+FinalPOECUP=rbind(POECUP,AntiJoinPOECUP)
+#n=204
+
+
+## -- -- Ajout information IDHabitat -- -- ##
+ExampleTable$FieldHabitat <- do.call(paste, c(ExampleTable[c("Field","Habitat")],sep=":"))
+
+TableIDHabitat=data.frame(table(ExampleTable$FieldHabitat))
+NewColumn=data.frame(c(1:34))
+NewColumn$c.1.34.=as.character(NewColumn$c.1.34.)
+colnames(NewColumn)=c("IDHabitat")
+TableIDHabitat=cbind(TableIDHabitat,NewColumn)
+colnames(TableIDHabitat)=c("FieldHabitat","Freq","IDHabitat")
+TableIDHabitat=TableIDHabitat[,-c(2)]
+
+FinalPOECUP$FieldHabitat <- do.call(paste, c(FinalPOECUP[c("Field","Habitat")],sep=":"))
+
+FinalPOECUP=data.frame(merge(FinalPOECUP, TableIDHabitat, by.x = "FieldHabitat"))
+colnames(FinalPOECUP)
+
+FinalPOECUP=FinalPOECUP[,-c(1)]
+
+FinalPOECUP$TrapInformation <- do.call(paste, c(FinalPOECUP[c("Field","IDHabitat","Position")],sep=":"))
+
+setwd("C:/Users/pbannwart/Desktop/DataEMERGE/GLMMANALYSIS")
+#write.csv2(FinalPOECUP,file="OverwinteringPOECUPLongFormat.csv")
+
+
+
+#### BRACHINUS CREPITANS ####
+BRACRE=subset(SeparateAggregateCumulativeDensityPeriod,SeparateAggregateCumulativeDensityPeriod$Species=="Brachinus_crepitans") #69
+
+BRACRE=subset(SeparateAggregateCumulativeDensityPeriod,SeparateAggregateCumulativeDensityPeriod$Species=="Brachinus_crepitans") #36
+
+BRACRE$MinimalNumber <- do.call(paste, c(BRACRE[c("SDC","Field","Habitat","Position","Culture","Session","Species")],sep=":"))
+UniqueBRACRE=data.frame(unique(BRACRE$MinimalNumber))
+colnames(UniqueBRACRE)=c("MinimalNumber")
+SepUniqueBRACRE=separate(UniqueBRACRE,'MinimalNumber',c("SDC","Field","Habitat","Position","Culture","Session","Species"),sep=':')
+count(SepUniqueBRACRE)
+204-69 #80 valeurs manquantes
+
+#Chargement de la table théorique que nous devrions avoir
+library(readr)
+ExampleTable <- read_delim("ExampleTable.csv", 
+                           delim = ";", escape_double = FALSE, trim_ws = TRUE)
+ExampleTable=ExampleTable[,-c(1)]
+colnames(ExampleTable)
+
+SepUniqueBRACRE$IdentifiantAntiJoin <- do.call(paste, c(SepUniqueBRACRE[c("SDC","Field", "Habitat","Position","Culture","Session")],sep=":"))
+
+ExampleTable$IdentifiantAntiJoin <- do.call(paste, c(ExampleTable[c("SDC","Field", "Habitat","Position","Culture","Session")],sep=":"))
+
+library(dplyr)
+AntiJoinBRACRE=data.frame(anti_join(ExampleTable, SepUniqueBRACRE, by='IdentifiantAntiJoin'))#n=80 parfait
+
+BRACRE=BRACRE[,-c(9)]
+AntiJoinBRACRE=AntiJoinBRACRE[,-c(7)]
+AntiJoinBRACRE$Species=as.character("Brachinus_crepitans")
+AntiJoinBRACRE$Count=as.numeric(0)
+
+FinalBRACRE=rbind(BRACRE,AntiJoinBRACRE)
+#n=204
+
+## -- -- Ajout information IDHabitat -- -- ##
+ExampleTable$FieldHabitat <- do.call(paste, c(ExampleTable[c("Field","Habitat")],sep=":"))
+
+TableIDHabitat=data.frame(table(ExampleTable$FieldHabitat))
+NewColumn=data.frame(c(1:34))
+NewColumn$c.1.34.=as.character(NewColumn$c.1.34.)
+colnames(NewColumn)=c("IDHabitat")
+TableIDHabitat=cbind(TableIDHabitat,NewColumn)
+colnames(TableIDHabitat)=c("FieldHabitat","Freq","IDHabitat")
+TableIDHabitat=TableIDHabitat[,-c(2)]
+
+FinalBRACRE$FieldHabitat <- do.call(paste, c(FinalBRACRE[c("Field","Habitat")],sep=":"))
+
+FinalBRACRE=data.frame(merge(FinalBRACRE, TableIDHabitat, by.x = "FieldHabitat"))
+colnames(FinalBRACRE)
+
+FinalBRACRE=FinalBRACRE[,-c(1)]
+
+FinalBRACRE$TrapInformation <- do.call(paste, c(FinalBRACRE[c("Field","IDHabitat","Position")],sep=":"))
+
+setwd("C:/Users/pbannwart/Desktop/DataEMERGE/GLMMANALYSIS")
+#write.csv2(FinalBRACRE,file="OverwinteringBRACRELongFormat.csv")
+
+
+
+#### ANCHOMENUS DORSALIS ####
+ANCDOR=subset(SeparateAggregateCumulativeDensityPeriod,SeparateAggregateCumulativeDensityPeriod$Species=="Anchomenus_dorsalis") #90
+
+ANCDOR$MinimalNumber <- do.call(paste, c(ANCDOR[c("SDC","Field","Habitat","Position","Culture","Session","Species")],sep=":"))
+UniqueANCDOR=data.frame(unique(ANCDOR$MinimalNumber))
+colnames(UniqueANCDOR)=c("MinimalNumber")
+SepUniqueANCDOR=separate(UniqueANCDOR,'MinimalNumber',c("SDC","Field","Habitat","Position","Culture","Session","Species"),sep=':')
+count(SepUniqueANCDOR)
+204-90 #80 valeurs manquantes
+
+#Chargement de la table théorique que nous devrions avoir
+library(readr)
+ExampleTable <- read_delim("ExampleTable.csv", 
+                           delim = ";", escape_double = FALSE, trim_ws = TRUE)
+ExampleTable=ExampleTable[,-c(1)]
+colnames(ExampleTable)
+
+SepUniqueANCDOR$IdentifiantAntiJoin <- do.call(paste, c(SepUniqueANCDOR[c("SDC","Field", "Habitat","Position","Culture","Session")],sep=":"))
+
+ExampleTable$IdentifiantAntiJoin <- do.call(paste, c(ExampleTable[c("SDC","Field", "Habitat","Position","Culture","Session")],sep=":"))
+
+library(dplyr)
+AntiJoinANCDOR=data.frame(anti_join(ExampleTable, SepUniqueANCDOR, by='IdentifiantAntiJoin'))#n=80 parfait
+
+ANCDOR=ANCDOR[,-c(9)]
+AntiJoinANCDOR=AntiJoinANCDOR[,-c(7)]
+AntiJoinANCDOR$Species=as.character("Brachinus_crepitans")
+AntiJoinANCDOR$Count=as.numeric(0)
+
+FinalANCDOR=rbind(ANCDOR,AntiJoinANCDOR)
+#n=204
+
+## -- -- Ajout information IDHabitat -- -- ##
+ExampleTable$FieldHabitat <- do.call(paste, c(ExampleTable[c("Field","Habitat")],sep=":"))
+
+TableIDHabitat=data.frame(table(ExampleTable$FieldHabitat))
+NewColumn=data.frame(c(1:34))
+NewColumn$c.1.34.=as.character(NewColumn$c.1.34.)
+colnames(NewColumn)=c("IDHabitat")
+TableIDHabitat=cbind(TableIDHabitat,NewColumn)
+colnames(TableIDHabitat)=c("FieldHabitat","Freq","IDHabitat")
+TableIDHabitat=TableIDHabitat[,-c(2)]
+
+FinalANCDOR$FieldHabitat <- do.call(paste, c(FinalANCDOR[c("Field","Habitat")],sep=":"))
+
+FinalANCDOR=data.frame(merge(FinalANCDOR, TableIDHabitat, by.x = "FieldHabitat"))
+colnames(FinalANCDOR)
+
+FinalANCDOR=FinalANCDOR[,-c(1)]
+
+FinalANCDOR$TrapInformation <- do.call(paste, c(FinalANCDOR[c("Field","IDHabitat","Position")],sep=":"))
+
+setwd("C:/Users/pbannwart/Desktop/DataEMERGE/GLMMANALYSIS")
+#write.csv2(FinalANCDOR,file="OverwinteringANCDORLongFormat.csv")
+
+
+
+#### HARPALUS AFFINIS  ####
+HARAFF=subset(SeparateAggregateCumulativeDensityPeriod,SeparateAggregateCumulativeDensityPeriod$Species=="Harpalus_affinis") #116
+
+HARAFF$MinimalNumber <- do.call(paste, c(HARAFF[c("SDC","Field","Habitat","Position","Culture","Session","Species")],sep=":"))
+UniqueHARAFF=data.frame(unique(HARAFF$MinimalNumber))
+colnames(UniqueHARAFF)=c("MinimalNumber")
+SepUniqueHARAFF=separate(UniqueHARAFF,'MinimalNumber',c("SDC","Field","Habitat","Position","Culture","Session","Species"),sep=':')
+count(SepUniqueHARAFF)
+204-116 #80 valeurs manquantes
+
+#Chargement de la table théorique que nous devrions avoir
+library(readr)
+ExampleTable <- read_delim("ExampleTable.csv", 
+                           delim = ";", escape_double = FALSE, trim_ws = TRUE)
+ExampleTable=ExampleTable[,-c(1)]
+colnames(ExampleTable)
+
+SepUniqueHARAFF$IdentifiantAntiJoin <- do.call(paste, c(SepUniqueHARAFF[c("SDC","Field", "Habitat","Position","Culture","Session")],sep=":"))
+
+ExampleTable$IdentifiantAntiJoin <- do.call(paste, c(ExampleTable[c("SDC","Field", "Habitat","Position","Culture","Session")],sep=":"))
+
+library(dplyr)
+AntiJoinHARAFF=data.frame(anti_join(ExampleTable, SepUniqueHARAFF, by='IdentifiantAntiJoin'))#n=80 parfait
+
+HARAFF=HARAFF[,-c(9)]
+AntiJoinHARAFF=AntiJoinHARAFF[,-c(7)]
+AntiJoinHARAFF$Species=as.character("Harpalus_affinis")
+AntiJoinHARAFF$Count=as.numeric(0)
+
+FinalHARAFF=rbind(HARAFF,AntiJoinHARAFF)
+#n=204
+
+## -- -- Ajout information IDHabitat -- -- ##
+ExampleTable$FieldHabitat <- do.call(paste, c(ExampleTable[c("Field","Habitat")],sep=":"))
+
+TableIDHabitat=data.frame(table(ExampleTable$FieldHabitat))
+NewColumn=data.frame(c(1:34))
+NewColumn$c.1.34.=as.character(NewColumn$c.1.34.)
+colnames(NewColumn)=c("IDHabitat")
+TableIDHabitat=cbind(TableIDHabitat,NewColumn)
+colnames(TableIDHabitat)=c("FieldHabitat","Freq","IDHabitat")
+TableIDHabitat=TableIDHabitat[,-c(2)]
+
+FinalHARAFF$FieldHabitat <- do.call(paste, c(FinalHARAFF[c("Field","Habitat")],sep=":"))
+
+FinalHARAFF=data.frame(merge(FinalHARAFF, TableIDHabitat, by.x = "FieldHabitat"))
+colnames(FinalHARAFF)
+
+FinalHARAFF=FinalHARAFF[,-c(1)]
+
+FinalHARAFF$TrapInformation <- do.call(paste, c(FinalHARAFF[c("Field","IDHabitat","Position")],sep=":"))
+
+setwd("C:/Users/pbannwart/Desktop/DataEMERGE/GLMMANALYSIS")
+#write.csv2(FinalHARAFF,file="OverwinteringHARAFFLongFormat.csv")
+
+
+
+
+#### PSEUDOOPHONUS RUFIPES  ####
+PSERUF=subset(SeparateAggregateCumulativeDensityPeriod,SeparateAggregateCumulativeDensityPeriod$Species=="Pseudoophonus_rufipes") #47
+
+PSERUF$MinimalNumber <- do.call(paste, c(PSERUF[c("SDC","Field","Habitat","Position","Culture","Session","Species")],sep=":"))
+UniquePSERUF=data.frame(unique(PSERUF$MinimalNumber))
+colnames(UniquePSERUF)=c("MinimalNumber")
+SepUniquePSERUF=separate(UniquePSERUF,'MinimalNumber',c("SDC","Field","Habitat","Position","Culture","Session","Species"),sep=':')
+count(SepUniquePSERUF)
+204-47 #80 valeurs manquantes
+
+#Chargement de la table théorique que nous devrions avoir
+library(readr)
+ExampleTable <- read_delim("ExampleTable.csv", 
+                           delim = ";", escape_double = FALSE, trim_ws = TRUE)
+ExampleTable=ExampleTable[,-c(1)]
+colnames(ExampleTable)
+
+SepUniquePSERUF$IdentifiantAntiJoin <- do.call(paste, c(SepUniquePSERUF[c("SDC","Field", "Habitat","Position","Culture","Session")],sep=":"))
+
+ExampleTable$IdentifiantAntiJoin <- do.call(paste, c(ExampleTable[c("SDC","Field", "Habitat","Position","Culture","Session")],sep=":"))
+
+library(dplyr)
+AntiJoinPSERUF=data.frame(anti_join(ExampleTable, SepUniquePSERUF, by='IdentifiantAntiJoin'))#n=80 parfait
+
+PSERUF=PSERUF[,-c(9)]
+AntiJoinPSERUF=AntiJoinPSERUF[,-c(7)]
+AntiJoinPSERUF$Species=as.character("Pseudoophonus_rufipes")
+AntiJoinPSERUF$Count=as.numeric(0)
+
+FinalPSERUF=rbind(PSERUF,AntiJoinPSERUF)
+#n=204
+
+## -- -- Ajout information IDHabitat -- -- ##
+ExampleTable$FieldHabitat <- do.call(paste, c(ExampleTable[c("Field","Habitat")],sep=":"))
+
+TableIDHabitat=data.frame(table(ExampleTable$FieldHabitat))
+NewColumn=data.frame(c(1:34))
+NewColumn$c.1.34.=as.character(NewColumn$c.1.34.)
+colnames(NewColumn)=c("IDHabitat")
+TableIDHabitat=cbind(TableIDHabitat,NewColumn)
+colnames(TableIDHabitat)=c("FieldHabitat","Freq","IDHabitat")
+TableIDHabitat=TableIDHabitat[,-c(2)]
+
+FinalPSERUF$FieldHabitat <- do.call(paste, c(FinalPSERUF[c("Field","Habitat")],sep=":"))
+
+FinalPSERUF=data.frame(merge(FinalPSERUF, TableIDHabitat, by.x = "FieldHabitat"))
+colnames(FinalPSERUF)
+
+FinalPSERUF=FinalPSERUF[,-c(1)]
+
+FinalPSERUF$TrapInformation <- do.call(paste, c(FinalPSERUF[c("Field","IDHabitat","Position")],sep=":"))
+
+setwd("C:/Users/pbannwart/Desktop/DataEMERGE/GLMMANALYSIS")
+#write.csv2(FinalPSERUF,file="OverwinteringPSERUFLongFormat.csv")
+
+

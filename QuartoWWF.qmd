@@ -1,0 +1,101 @@
+---
+title: "Where are Ursidae?"
+format:
+  html:
+    theme: united
+    code-fold: true
+    code-summary: "see the code"
+execute:
+  echo: false
+  eval: true
+  warning: false
+  error: true
+---
+
+## Données wildfinder
+Chargement des données wildfinder
+
+```{r}
+here::here("wildfinder")
+raw_wwf_ecolist<-readr::read_csv("wildfinder/raw_wwf_ecolist.csv")
+raw_wwf_ecospec<-readr::read_csv("wildfinder/raw_wwf_ecospec.csv")
+raw_wwf_mammals<-readr::read_csv("wildfinder/raw_wwf_mammals.csv")
+
+```
+
+## Présentation brève des données utilisées
+
+```{r}
+#| label: tbl-tableswildfinder
+#| tbl-cap: "Tables"
+#| tbl-subcap:
+#|   - "Ecolist"
+#|   - "Ecospec"
+#|   - "Mammals"
+#| layout-ncol: 3
+
+knitr::kable(head(raw_wwf_ecolist))
+knitr::kable(head(raw_wwf_ecospec))
+knitr::kable(head(raw_wwf_mammals))
+
+```
+
+## Sélection de nos huit espèces d'intérêt
+
+```{r}
+#| label: tbl-tabeeightursidae
+#| tbl-cap: "Tables"
+ursidaefamily<-subset(raw_wwf_mammals,raw_wwf_mammals$family=="Ursidae")
+
+allursidaespecies<-data.frame(table(ursidaefamily$species_id))#8 species
+colnames(allursidaespecies)=c("SpeciesID","Frequence")
+knitr::kable(head(allursidaespecies))
+```
+
+
+Ajout de données manquantes pour une espèce d'ursidae
+
+```{r}
+echo=FALSE
+mergeursidaefamilyecospec=merge(ursidaefamily, raw_wwf_ecospec, by.x = "species_id")
+
+ursidae27926withoutecoregion=data.frame(t(c("none","27926")))
+colnames(ursidae27926withoutecoregion)=c("ecoregion_id", "species_id")
+
+raw_wwf_ecospec=rbind(raw_wwf_ecospec,ursidae27926withoutecoregion)
+
+mergeursidaefamilyecospec=merge(ursidaefamily, raw_wwf_ecospec, by.x = "species_id")
+```
+
+Merge les trois tableaux 
+```{r}
+mergethreetables=merge(mergeursidaefamilyecospec, raw_wwf_ecolist, by.x = "ecoregion_id")
+#on perd tout de même notre espèce ma solution ne fonctionnait pas
+```
+
+Représentation du nombre d'occurrences par espèces dans chaque écorégion
+
+```{r}
+#première étape : isoler chaque espèces
+CountOccurrencesEcoregion<- mergethreetables |> filter(!is.na(ecoregion_id)) |>  dplyr::group_by(species_id) |>
+dplyr::summarise(occurrencesecoregion = n_distinct(ecoregion_id))
+
+colnames(CountOccurrencesEcoregion)=c("IdentifiantSpeciesUrsidae","Occurrences")
+
+Verification=subset(mergethreetables,mergethreetables$species_id=="14938")
+UniqueVerification=unique(Verification$ecoregion_id)#n=139 ok
+
+```
+
+Représentation graphique du résultat du nombre d'occurrences par ecoregion
+
+```{r}
+#| label: fig-barplot
+#| fig-cap: Barplot of species occurrences within ecoregions
+
+CountOccurrencesEcoregion
+CountOccurrencesEcoregion$IdentifiantSpeciesUrsidae=as.character(CountOccurrencesEcoregion$IdentifiantSpeciesUrsidae)
+ggplot2::ggplot(CountOccurrencesEcoregion, ggplot2::aes(x=IdentifiantSpeciesUrsidae, y=Occurrences)) + 
+  ggplot2::geom_bar(stat = "identity") + ggplot2::ylab("Occurences within different ecoregions") + ggplot2::xlab("Species code") 
+
+```

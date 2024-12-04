@@ -1,0 +1,4 @@
+here::here("wildfinder")
+readr::read_csv("wildfinder/raw_wwf_ecolist.csv")
+readr::read_csv("wildfinder/raw_wwf_ecospec.csv")
+readr::read_csv("wildfinder/raw_wwf_mammals.csv")
